@@ -8,46 +8,51 @@
         body { font-family: sans-serif; line-height: 1.6; }
         .container { max-width: 900px; margin: 20px auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .staffing-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .dynamic-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: center; margin-bottom: 10px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
-        textarea, select, input[type="number"] { width: 100%; padding: 8px; box-sizing: border-box; }
+        textarea, select, input[type="number"], input[type="date"] { width: 100%; padding: 8px; box-sizing: border-box; }
         input[type="submit"], button { padding: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
         .remove-btn { background-color: #dc3545; }
         .results { margin-top: 20px; }
         .schedule, .stats { white-space: pre-wrap; font-family: monospace; background-color: #f4f4f4; padding: 15px; border-radius: 4px; }
+        .nav-link { display: inline-block; margin-bottom: 20px; }
+        .employee-list { max-height: 150px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
+        <a href="/manage" class="nav-link">Manage Employees &rarr;</a>
         <h1>AI Monthly Shift Scheduler</h1>
         <form id="schedule-form" method="post">
-            <!-- Main form fields -->
             <div class="form-grid">
-                <div>
-                    <label for="year">Year:</label>
-                    <input type="number" id="year" name="year" value="{{ year }}" required>
-                </div>
-                <div>
-                    <label for="month">Month:</label>
-                    <select id="month" name="month" required>
-                        {% for i in range(1, 13) %}<option value="{{ i }}" {% if i == month %}selected{% endif %}>{{ calendar.month_name[i] }}</option>{% endfor %}
-                    </select>
+                <div><label for="year">Year:</label><input type="number" id="year" name="year" value="{{ year }}" required></div>
+                <div><label for="month">Month:</label><select id="month" name="month" required>{% for i in range(1, 13) %}<option value="{{ i }}" {% if i == month %}selected{% endif %}>{{ calendar.month_name[i] }}</option>{% endfor %}</select></div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <label>Select Employees for this Schedule:</label>
+                <div class="employee-list">
+                    {% for emp in all_employees %}
+                    <div><input type="checkbox" name="employees" value="{{ emp.name }}" id="emp_{{ emp.id }}" checked> <label for="emp_{{ emp.id }}">{{ emp.name }}</label></div>
+                    {% endfor %}
                 </div>
             </div>
-            <div style="margin-top: 20px;"><label for="employees">Employee Names (comma-separated):</label><textarea id="employees" name="employees" rows="4" required>{{ employees_str or '' }}</textarea></div>
-            <div style="margin-top: 20px;"><label for="absences">Absences (one per line: Employee Name, Day):</label><textarea id="absences" name="absences" rows="4">{{ absences_str or '' }}</textarea></div>
 
-            <!-- Dynamic Staffing Requirements -->
+            <div style="margin-top: 20px;">
+                <label>Absences:</label>
+                <div id="absences-container"></div>
+                <button type="button" id="add-absence">Add Absence</button>
+            </div>
+
             <div style="margin-top: 20px;">
                 <label>Staffing Requirements:</label>
-                <div id="staffing-requirements-container"></div>
+                <div id="staffing-reqs-container"></div>
                 <button type="button" id="add-staffing-req">Add Requirement</button>
             </div>
             <br>
             <input type="submit" value="Generate Schedule">
         </form>
 
-        <!-- Results section -->
         <div class="results">
             {% if error %}<p style="color: red;"><strong>{{ error }}</strong></p>{% endif %}
             {% if schedule %}<h2>Schedule for {{ calendar.month_name[month] }} {{ year }}</h2><div class="schedule">{% for line in schedule %}{{ line }}
@@ -58,50 +63,32 @@
     </div>
 
     <script>
+        // Script for dynamic staffing requirements
         document.getElementById('add-staffing-req').addEventListener('click', function() {
-            const container = document.getElementById('staffing-requirements-container');
+            const container = document.getElementById('staffing-reqs-container');
             const newRow = document.createElement('div');
-            newRow.className = 'staffing-row';
+            newRow.className = 'dynamic-row';
+            newRow.innerHTML = `
+                <select name="staff_req_day">${[...Array(31).keys()].map(i => `<option value="${i+1}">Day ${i+1}</option>`).join('')}</select>
+                <select name="staff_req_shift"><option>Morning</option><option>Evening</option><option>Night</option></select>
+                <input type="number" name="staff_req_count" value="1" min="1" required>
+                <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+            `;
+            container.appendChild(newRow);
+        });
 
-            // Day select
-            const daySelect = document.createElement('select');
-            daySelect.name = 'staff_req_day';
-            for (let i = 1; i <= 31; i++) {
-                const option = document.createElement('option');
-                option.value = i;
-                option.textContent = `Day ${i}`;
-                daySelect.appendChild(option);
-            }
-
-            // Shift select
-            const shiftSelect = document.createElement('select');
-            shiftSelect.name = 'staff_req_shift';
-            ['Morning', 'Evening', 'Night'].forEach(shift => {
-                const option = document.createElement('option');
-                option.value = shift;
-                option.textContent = shift;
-                shiftSelect.appendChild(option);
-            });
-
-            // Count input
-            const countInput = document.createElement('input');
-            countInput.type = 'number';
-            countInput.name = 'staff_req_count';
-            countInput.min = '1';
-            countInput.value = '1';
-            countInput.required = true;
-
-            // Remove button
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'remove-btn';
-            removeBtn.textContent = 'Remove';
-            removeBtn.onclick = function() { container.removeChild(newRow); };
-
-            newRow.appendChild(daySelect);
-            newRow.appendChild(shiftSelect);
-            newRow.appendChild(countInput);
-            newRow.appendChild(removeBtn);
+        // Script for dynamic absences
+        document.getElementById('add-absence').addEventListener('click', function() {
+            const container = document.getElementById('absences-container');
+            const newRow = document.createElement('div');
+            newRow.className = 'dynamic-row';
+            const employeeOptions = [{% for emp in all_employees %}`<option value="{{ emp.id }}">{{ emp.name }}</option>`,{% endfor %}].join('');
+            newRow.innerHTML = `
+                <select name="absence_employee_id">${employeeOptions}</select>
+                <input type="number" name="absence_day" placeholder="Day of Month" min="1" max="31" required>
+                <select name="absence_reason"><option>Leave</option><option>Sick</option><option>Permission</option></select>
+                <button type="button" class="remove-btn" onclick="this.parentElement.remove()">Remove</button>
+            `;
             container.appendChild(newRow);
         });
     </script>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Shift Scheduler</title>
+    <style>
+        body { font-family: sans-serif; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        textarea { width: 100%; }
+        .schedule, .stats { white-space: pre-wrap; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Shift Scheduler</h1>
+        <form method="post">
+            <label for="employees">Enter employee names (comma-separated):</label><br>
+            <textarea id="employees" name="employees" rows="3">{% if employees %}{{ employees }}{% endif %}</textarea><br><br>
+            <input type="submit" value="Generate Schedule">
+        </form>
+
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+        {% endif %}
+
+        {% if schedule %}
+            <h2>Schedule</h2>
+            <div class="schedule">
+                {% for line in schedule %}
+                    {{ line }}
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {% if stats %}
+            <h2>Statistics</h2>
+            <div class="stats">
+                {% for line in stats %}
+                    {{ line }}
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>

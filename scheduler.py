@@ -1,8 +1,10 @@
-import argparse
 from ortools.sat.python import cp_model
+import argparse
 
-def main(employees):
-    # Data.
+def generate_schedule(employees):
+    """
+    Generates a shift schedule for the given list of employees.
+    """
     num_employees = len(employees)
     num_shifts = 3  # Morning, Evening, Night
     num_days = 7
@@ -14,7 +16,6 @@ def main(employees):
     model = cp_model.CpModel()
 
     # Creates shift variables.
-    # shifts[(e, d, s)]: employee 'e' works shift 's' on day 'd'.
     shifts = {}
     for e in all_employees:
         for d in all_days:
@@ -39,10 +40,12 @@ def main(employees):
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
 
+    schedule_output = []
+    stats_output = []
+
     if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-        print('Solution:')
         for d in all_days:
-            print(f'Day {d}')
+            schedule_output.append(f'Day {d}')
             for s in all_shifts:
                 for e in all_employees:
                     if solver.Value(shifts[(e, d, s)]) == 1:
@@ -52,20 +55,35 @@ def main(employees):
                             shift_name = "Evening ( 3pm - 11pm)"
                         else:
                             shift_name = "Night   (11pm -  7am)"
-                        print(f'  Shift {shift_name} assigned to employee {employees[e]}')
-        print()
-        print('Statistics')
+                        schedule_output.append(f'  Shift {shift_name} assigned to employee {employees[e]}')
+
         for e in all_employees:
             num_shifts_worked = 0
             for d in all_days:
                 for s in all_shifts:
                     if solver.Value(shifts[(e, d, s)]) == 1:
                         num_shifts_worked += 1
-            print(f'  Employee {employees[e]} worked {num_shifts_worked} shifts')
+            stats_output.append(f'Employee {employees[e]} worked {num_shifts_worked} shifts')
 
+        return schedule_output, stats_output
+    else:
+        return None, None
+
+def main(employees):
+    """
+    Main function to run from the command line.
+    """
+    schedule, stats = generate_schedule(employees)
+    if schedule and stats:
+        print('Solution:')
+        for line in schedule:
+            print(line)
+        print()
+        print('Statistics')
+        for line in stats:
+            print(line)
     else:
         print('No solution found.')
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

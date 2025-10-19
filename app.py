@@ -69,7 +69,7 @@ def index():
         else:
             absences = parse_dynamic_absences(request.form)
             staffing_reqs = parse_staffing_requirements(request.form)
-            schedule, stats = generate_schedule(year, month, employees, absences, staffing_reqs)
+            schedule, stats, _ = generate_schedule(year, month, employees, absences, staffing_reqs)
             if not schedule:
                 error = "No solution could be found. Try adding more employees, reducing absences, or adjusting staffing requirements."
 

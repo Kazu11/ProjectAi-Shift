@@ -63,8 +63,6 @@ def generate_schedule(year, month, employees, absences=None, staffing_requiremen
             model.AddBoolOr([regular_shifts[(e, d + 1, 0)], overtime_shifts[(e, d + 1, 0)]]).OnlyEnforceIf(works_morning_d1)
             model.AddBoolAnd([regular_shifts[(e, d + 1, 0)].Not(), overtime_shifts[(e, d + 1, 0)].Not()]).OnlyEnforceIf(works_morning_d1.Not())
             model.AddImplication(works_night_d, works_morning_d1.Not())
-            model.AddImplication(regular_shifts[(e, d, 1)], regular_shifts[(e, d + 1, 0)].Not())
-            model.AddImplication(regular_shifts[(e, d, 2)], regular_shifts[(e, d + 1, 1)].Not())
 
     # --- Overtime Constraints ---
     for e in all_employees:
@@ -83,28 +81,35 @@ def generate_schedule(year, month, employees, absences=None, staffing_requiremen
     solver = cp_model.CpSolver()
     status = solver.Solve(model)
 
-    schedule_output, stats_output = [], []
+    schedule_output, stats_output, structured_schedule = [], [], {}
     if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
         for d in all_days:
             schedule_output.append(f'Day {d + 1}')
+            day_key = d + 1
+            structured_schedule[day_key] = {}
             for s in all_shifts:
                 assigned_employees = []
+                shift_name_key = ["Morning", "Evening", "Night"][s]
+                structured_schedule[day_key][shift_name_key] = []
                 for e in all_employees:
                     is_overtime = solver.Value(overtime_shifts[(e, d, s)]) == 1
                     if is_overtime or solver.Value(regular_shifts[(e, d, s)]) == 1:
+                        employee_name = employees[e]
                         ot_marker = " (Overtime)" if is_overtime else ""
-                        assigned_employees.append(f'{employees[e]}{ot_marker}')
-                shift_name = ["Morning (7am-3pm)", "Evening (3pm-11pm)", "Night (11pm-7am)"][s]
-                schedule_output.append(f'  Shift {shift_name}: {", ".join(assigned_employees)}')
+                        assigned_employees.append(f'{employee_name}{ot_marker}')
+                        structured_schedule[day_key][shift_name_key].append(employee_name)
+
+                shift_name_display = ["Morning (7am-3pm)", "Evening (3pm-11pm)", "Night (11pm-7am)"][s]
+                schedule_output.append(f'  Shift {shift_name_display}: {", ".join(assigned_employees)}')
 
         for e in all_employees:
             reg = sum(solver.Value(regular_shifts[(e, d, s)]) for d in all_days for s in all_shifts)
             ot = sum(solver.Value(overtime_shifts[(e, d, s)]) for d in all_days for s in all_shifts)
             stats_output.append(f'{employees[e]}: {reg} regular shifts, {ot} overtime shifts.')
 
-        return schedule_output, stats_output
+        return schedule_output, stats_output, structured_schedule
     else:
-        return None, None
+        return None, None, None
 
 def main():
     parser = argparse.ArgumentParser()
@@ -115,7 +120,7 @@ def main():
 
     staffing_reqs = {(4, 0): 2, (4, 1): 2} # Day 5, Morning: 2 staff; Day 5, Evening: 2 staff
 
-    schedule, stats = generate_schedule(args.year, args.month, args.employees, staffing_requirements=staffing_reqs)
+    schedule, stats, _ = generate_schedule(args.year, args.month, args.employees, staffing_requirements=staffing_reqs)
 
     if schedule and stats:
         print(f'Solution for {calendar.month_name[args.month]} {args.year}:')

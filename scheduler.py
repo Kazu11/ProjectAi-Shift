@@ -38,7 +38,6 @@ def generate_schedule(year, month, employees, absences=None):
                 overtime_shifts[(e, d, s)] = model.NewBoolVar(f'ovr_e{e}d{d}s{s}')
 
     # --- Core Constraints ---
-    # Each shift is covered by exactly one person (regular or overtime).
     for d in all_days:
         for s in all_shifts:
             model.AddExactlyOne(
@@ -46,7 +45,6 @@ def generate_schedule(year, month, employees, absences=None):
                 [overtime_shifts[(e, d, s)] for e in all_employees]
             )
 
-    # Absence constraints.
     for e, d in absent_employees:
         for s in all_shifts:
             model.Add(regular_shifts[(e, d, s)] == 0)
@@ -55,42 +53,48 @@ def generate_schedule(year, month, employees, absences=None):
     # --- Employee Workload Constraints ---
     for e in all_employees:
         for d in all_days:
-            # At most one REGULAR shift per day.
             model.Add(sum(regular_shifts[(e, d, s)] for s in all_shifts) <= 1)
-            # At most two TOTAL shifts per day (allows for one double shift).
             model.Add(sum(regular_shifts[(e, d, s)] + overtime_shifts[(e, d, s)] for s in all_shifts) <= 2)
 
-    # --- Regular Shift Constraints ---
-    # Max 6 regular shifts in a 7-day rolling window.
     for e in all_employees:
         for d in range(num_days - 6):
             model.Add(sum(regular_shifts[(e, d_window, s)] for d_window in range(d, d + 7) for s in all_shifts) <= 6)
 
     # --- Overtime Constraints ---
-    # Max 3 overtime shifts per month.
     for e in all_employees:
         model.Add(sum(overtime_shifts[(e, d, s)] for d in all_days for s in all_shifts) <= 3)
 
-    # At least 7-day gap between overtime shifts.
     for e in all_employees:
         for d in range(num_days - 7):
             model.Add(sum(overtime_shifts[(e, d_window, s)] for d_window in range(d, d + 8) for s in all_shifts) <= 1)
 
-    # Overtime Eligibility: Must work an adjacent regular shift.
     for e in all_employees:
         for d in all_days:
             for s in all_shifts:
                 adj_regular_shifts = []
-                # Shift before
-                if s > 0:
-                    adj_regular_shifts.append(regular_shifts[(e, d, s - 1)])
-                # Shift after
-                if s < num_shifts - 1:
-                    adj_regular_shifts.append(regular_shifts[(e, d, s + 1)])
+                if s > 0: adj_regular_shifts.append(regular_shifts[(e, d, s - 1)])
+                if s < num_shifts - 1: adj_regular_shifts.append(regular_shifts[(e, d, s + 1)])
+                if adj_regular_shifts: model.AddBoolOr(adj_regular_shifts).OnlyEnforceIf(overtime_shifts[(e, d, s)])
 
-                # Enforce that if an overtime shift is taken, an adjacent regular shift must also be taken.
-                if adj_regular_shifts:
-                    model.AddBoolOr(adj_regular_shifts).OnlyEnforceIf(overtime_shifts[(e, d, s)])
+    # --- Shift Rotation Constraints ---
+    for e in all_employees:
+        for d in range(num_days - 1):
+            # Hard Rule: No Night(2) -> Morning(0) transitions for any shift type.
+            works_night_d = model.NewBoolVar(f'e{e}d{d}_works_night')
+            model.AddBoolOr([regular_shifts[(e, d, 2)], overtime_shifts[(e, d, 2)]]).OnlyEnforceIf(works_night_d)
+            model.AddBoolAnd([regular_shifts[(e, d, 2)].Not(), overtime_shifts[(e, d, 2)].Not()]).OnlyEnforceIf(works_night_d.Not())
+
+            works_morning_d1 = model.NewBoolVar(f'e{e}d{d+1}_works_morning')
+            model.AddBoolOr([regular_shifts[(e, d + 1, 0)], overtime_shifts[(e, d + 1, 0)]]).OnlyEnforceIf(works_morning_d1)
+            model.AddBoolAnd([regular_shifts[(e, d + 1, 0)].Not(), overtime_shifts[(e, d + 1, 0)].Not()]).OnlyEnforceIf(works_morning_d1.Not())
+
+            model.AddImplication(works_night_d, works_morning_d1.Not())
+
+            # Flexible Rule: No backward rotation on REGULAR shifts.
+            # Evening(1) -> Morning(0)
+            model.AddImplication(regular_shifts[(e, d, 1)], regular_shifts[(e, d + 1, 0)].Not())
+            # Night(2) -> Evening(1)
+            model.AddImplication(regular_shifts[(e, d, 2)], regular_shifts[(e, d + 1, 1)].Not())
 
     # --- Objective: Minimize Overtime ---
     model.Minimize(sum(overtime_shifts.values()))
@@ -122,13 +126,11 @@ def generate_schedule(year, month, employees, absences=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    # Use a smaller, more constrained set of employees for testing the overtime logic
     parser.add_argument('--employees', nargs='+', default=['Alice', 'Bob', 'Charlie', 'David'], help='List of employee names')
     parser.add_argument('--year', type=int, default=datetime.now().year, help='Year for the schedule')
     parser.add_argument('--month', type=int, default=datetime.now().month, help='Month for the schedule')
     args = parser.parse_args()
 
-    # Create a scenario where overtime is likely necessary
     absences = [{'employee_name': 'Alice', 'day': 5}, {'employee_name': 'Bob', 'day': 5}]
 
     schedule, stats = generate_schedule(args.year, args.month, args.employees, absences)

@@ -41,6 +41,10 @@
                 <label for="absences">Absences (one per line: Employee Name, Day):</label>
                 <textarea id="absences" name="absences" rows="4">{{ absences_str or '' }}</textarea>
             </div>
+            <div style="margin-top: 20px;">
+                <label for="staffing_reqs">Staffing Requirements (one per line: Day, Shift Name, Count):</label>
+                <textarea id="staffing_reqs" name="staffing_reqs" rows="4">{{ staffing_reqs_str or '' }}</textarea>
+            </div>
             <br>
             <input type="submit" value="Generate Schedule">
         </form>
